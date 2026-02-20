@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scott River Hydrograph — USGS Gage 11519500</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #eef2f7;
+            color: #333;
+            padding: 24px;
+        }
+
+        .page-header {
+            max-width: 1200px;
+            margin: 0 auto 16px;
+        }
+
+        h1 {
+            font-size: 1.55rem;
+            color: #1a4f7a;
+            margin-bottom: 4px;
+        }
+
+        .subtitle {
+            font-size: 0.92rem;
+            color: #555;
+        }
+
+        .toolbar {
+            max-width: 1200px;
+            margin: 0 auto 14px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .toggle-card {
+            background: white;
+            border-radius: 7px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.13);
+            padding: 9px 16px;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+
+        .toggle-card label {
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            user-select: none;
+            font-weight: 500;
+        }
+
+        input[type="checkbox"] {
+            width: 17px;
+            height: 17px;
+            cursor: pointer;
+            accent-color: #1a4f7a;
+        }
+
+        select#waterYear {
+            font-size: 14px;
+            font-family: inherit;
+            padding: 3px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            background: white;
+            color: #333;
+        }
+
+        select#waterYear:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #status {
+            font-size: 0.85rem;
+            color: #666;
+            font-style: italic;
+        }
+
+        .chart-card {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.13);
+            padding: 8px;
+        }
+
+        #chart { width: 100%; }
+
+        .min-flow-table {
+            max-width: 1200px;
+            margin: 16px auto 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.13);
+            padding: 14px 18px;
+            font-size: 0.85rem;
+            color: #444;
+        }
+
+        .min-flow-table h3 {
+            margin-bottom: 8px;
+            color: #c0392b;
+            font-size: 0.92rem;
+            letter-spacing: 0.02em;
+        }
+
+        .min-flow-table table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        .min-flow-table th,
+        .min-flow-table td {
+            border: 1px solid #ddd;
+            padding: 5px 10px;
+            text-align: center;
+        }
+
+        .min-flow-table th {
+            background: #f5f5f5;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="page-header">
+        <h1>Scott River Hydrograph</h1>
+        <p class="subtitle">USGS Gage 11519500 &mdash; Daily Mean Discharge, Scott River at Fort Jones, CA</p>
+    </div>
+
+    <div class="toolbar">
+        <div class="toggle-card">
+            <label for="waterYear" style="font-weight:500;font-size:14px;">Water Year</label>
+            <select id="waterYear"></select>
+        </div>
+        <div class="toggle-card">
+            <label for="logScale">
+                <input type="checkbox" id="logScale">
+                Logarithmic Y-axis
+            </label>
+        </div>
+        <span id="status">Fetching data from USGS Water Services&hellip;</span>
+    </div>
+
+    <div class="chart-card">
+        <div id="chart"></div>
+    </div>
+
+    <div class="min-flow-table">
+        <h3>Minimum Flow Requirements (cfs)</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th>
+                    <th>Jun 1&ndash;23</th><th>Jun 24&ndash;30</th>
+                    <th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>200</td><td>200</td><td>200</td><td>150</td><td>150</td>
+                    <td>125</td><td>90</td>
+                    <td>50</td><td>30</td><td>33</td><td>40</td><td>60</td><td>150</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // ── Configuration ─────────────────────────────────────────────────────
+        const GAGE_ID = '11519500';
+        const FIRST_WY = 1990;   // earliest water year offered in the dropdown
+
+        // ── Water year helpers ────────────────────────────────────────────────
+        const today = new Date();
+
+        // Water year containing today: if Oct or later, WY = this year + 1; else WY = this year.
+        const currentWY = today.getMonth() >= 9
+            ? today.getFullYear() + 1
+            : today.getFullYear();
+
+        // Return the start/end date strings for a given water year.
+        // End is capped at today for the current (possibly partial) WY.
+        function wyDates(wy) {
+            const start = (wy - 1) + '-10-01';
+            const fullEnd = wy + '-09-30';
+            const todayStr = today.toISOString().slice(0, 10);
+            const end = fullEnd <= todayStr ? fullEnd : todayStr;
+            return { start, end, fullEnd };
+        }
+
+        // ── URL builders ──────────────────────────────────────────────────────
+        // Try direct first; if CORS-blocked (file:// origin), fall back to proxy.
+        function buildAPIs(start, end) {
+            const directUrl =
+                'https://waterservices.usgs.gov/nwis/dv/' +
+                '?format=json&sites=' + GAGE_ID +
+                '&parameterCd=00060' +
+                '&startDT=' + start +
+                '&endDT='   + end;
+            const proxyUrl =
+                'https://api.allorigins.win/raw?url=' + encodeURIComponent(directUrl);
+            return [
+                { label: 'USGS direct',         url: directUrl },
+                { label: 'USGS via CORS proxy', url: proxyUrl  }
+            ];
+        }
+
+        // ── USGS JSON parser ──────────────────────────────────────────────────
+        function parseUSGSJson(json) {
+            const ts = json?.value?.timeSeries?.[0]?.values?.[0]?.value ?? [];
+            return ts
+                .filter(v => v.value && v.value !== '-999999')
+                .map(v => ({ date: v.dateTime.slice(0, 10), flow: parseFloat(v.value) }))
+                .filter(r => !isNaN(r.flow));
+        }
+
+        // ── Minimum flow look-up ──────────────────────────────────────────────
+        function getMinFlow(dateStr) {
+            const parts = dateStr.split('-');
+            const mm = parseInt(parts[1], 10);
+            const dd = parseInt(parts[2], 10);
+            switch (mm) {
+                case  1: return 200;
+                case  2: return 200;
+                case  3: return 200;
+                case  4: return 150;
+                case  5: return 150;
+                case  6: return dd <= 23 ? 125 : 90;
+                case  7: return 50;
+                case  8: return 30;
+                case  9: return 33;
+                case 10: return 40;
+                case 11: return 60;
+                case 12: return 150;
+            }
+        }
+
+        // ── State ─────────────────────────────────────────────────────────────
+        let chartDates    = [];
+        let chartFlows    = [];
+        let chartMinFlows = [];
+        let activeWY      = currentWY;
+
+        // ── Data fetch ────────────────────────────────────────────────────────
+        async function loadData(wy) {
+            activeWY = wy;
+            chartDates    = [];
+            chartFlows    = [];
+            chartMinFlows = [];
+
+            const statusEl  = document.getElementById('status');
+            const selectEl  = document.getElementById('waterYear');
+            const { start, end, fullEnd } = wyDates(wy);
+
+            statusEl.style.color = '#666';
+            selectEl.disabled    = true;
+
+            let records = null;
+            let lastErr = null;
+
+            for (const api of buildAPIs(start, end)) {
+                try {
+                    statusEl.textContent = 'Fetching WY ' + wy + ' via ' + api.label + '…';
+                    const resp = await fetch(api.url, { headers: { 'Accept': 'application/json' } });
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    const json = await resp.json();
+                    const parsed = parseUSGSJson(json);
+                    if (parsed.length > 0) {
+                        records = parsed;
+                        console.info('Loaded via', api.label, '—', parsed.length, 'records');
+                        break;
+                    }
+                    throw new Error('0 valid records returned');
+                } catch (err) {
+                    lastErr = err;
+                    console.warn(api.label, 'failed:', err.message);
+                }
+            }
+
+            selectEl.disabled = false;
+
+            if (!records) {
+                statusEl.style.color = 'crimson';
+                statusEl.textContent = 'Error loading WY ' + wy + ': ' + (lastErr?.message ?? 'all sources failed');
+                return;
+            }
+
+            records.sort((a, b) => a.date.localeCompare(b.date));
+            records.forEach(({ date, flow }) => {
+                chartDates.push(date);
+                chartFlows.push(Math.max(flow, 0) + 0.01);
+                chartMinFlows.push(getMinFlow(date));
+            });
+
+            const partial = end < fullEnd ? ' (partial — through ' + end + ')' : '';
+            statusEl.textContent =
+                'WY ' + wy + partial + '  \u2022  ' +
+                records.length + ' daily values  \u2022  ' +
+                start + ' to ' + end;
+
+            renderChart(document.getElementById('logScale').checked);
+        }
+
+        // ── Chart render ──────────────────────────────────────────────────────
+        function renderChart(useLog) {
+            const { start, fullEnd } = wyDates(activeWY);
+
+            const flowTrace = {
+                x: chartDates,
+                y: chartFlows,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Daily Mean Flow',
+                line: { color: '#2271b3', width: 1.8 },
+                hovertemplate: '<b>%{x}</b><br>Flow: %{y:.1f} cfs<extra></extra>'
+            };
+
+            const minFlowTrace = {
+                x: chartDates,
+                y: chartMinFlows,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Minimum Flow Requirement',
+                line: { color: '#c0392b', width: 2.2 },
+                hovertemplate: '<b>%{x}</b><br>Min Requirement: %{y} cfs<extra></extra>'
+            };
+
+            const layout = {
+                title: {
+                    text: 'Water Year ' + activeWY +
+                          '  (Oct ' + (activeWY - 1) + ' \u2013 Sep ' + activeWY + ')',
+                    font: { size: 15, color: '#333' }
+                },
+                xaxis: {
+                    title: { text: 'Date', standoff: 14 },
+                    type: 'date',
+                    range: [start, fullEnd],   // always show the full WY span
+                    dtick: 'M1',
+                    tickformat: '%b %Y',
+                    tickangle: -45,
+                    showgrid: true,
+                    gridcolor: '#e4e4e4',
+                    zeroline: false,
+                    ticks: 'outside'
+                },
+                yaxis: {
+                    title: { text: 'Discharge (cfs)', standoff: 10 },
+                    type: useLog ? 'log' : 'linear',
+                    showgrid: true,
+                    gridcolor: '#e4e4e4',
+                    zeroline: false,
+                    ticks: 'outside'
+                },
+                legend: {
+                    x: 0.01, xanchor: 'left',
+                    y: 0.99, yanchor: 'top',
+                    bgcolor: 'rgba(255,255,255,0.88)',
+                    bordercolor: '#bbb',
+                    borderwidth: 1,
+                    font: { size: 13 }
+                },
+                margin: { t: 50, r: 30, b: 100, l: 80 },
+                hovermode: 'x unified',
+                plot_bgcolor: '#fafafa',
+                paper_bgcolor: 'white',
+                height: 520
+            };
+
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d'],
+                displaylogo: false,
+                toImageButtonOptions: {
+                    format: 'png',
+                    filename: 'scott_river_WY' + activeWY,
+                    scale: 2
+                }
+            };
+
+            Plotly.react('chart', [flowTrace, minFlowTrace], layout, config);
+        }
+
+        // ── Populate water year dropdown ──────────────────────────────────────
+        (function populateSelect() {
+            const sel = document.getElementById('waterYear');
+            for (let wy = currentWY; wy >= FIRST_WY; wy--) {
+                const opt = document.createElement('option');
+                opt.value = wy;
+                opt.textContent = 'WY ' + wy +
+                    '  (Oct ' + (wy - 1) + ' \u2013 Sep ' + wy + ')' +
+                    (wy === currentWY ? '  ★ current' : '');
+                sel.appendChild(opt);
+            }
+        })();
+
+        // ── Event listeners ───────────────────────────────────────────────────
+        document.getElementById('waterYear').addEventListener('change', function () {
+            loadData(parseInt(this.value, 10));
+        });
+
+        document.getElementById('logScale').addEventListener('change', function () {
+            renderChart(this.checked);
+        });
+
+        // ── Kick off ──────────────────────────────────────────────────────────
+        loadData(currentWY);
+    </script>
+</body>
+</html>
